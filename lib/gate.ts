@@ -40,10 +40,10 @@ async function secureEqual(left: string, right: string) {
 }
 
 export async function validateCredential(input: {
-  mode: GateMode;
   username?: string;
   password?: string;
 }) {
+  const requiredMode = getGateMode();
   const expectedPassword = process.env.GATE_PASSWORD ?? "";
   const expectedUsername = process.env.GATE_USERNAME?.trim() || "guest";
 
@@ -54,7 +54,7 @@ export async function validateCredential(input: {
   const password = input.password ?? "";
   const passwordMatches = await secureEqual(password, expectedPassword);
 
-  if (input.mode === "classic") {
+  if (requiredMode === "classic") {
     const usernameMatches = await secureEqual(
       input.username?.trim() ?? "",
       expectedUsername,
