@@ -1,14 +1,17 @@
 {
   "name": "gate",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
+  "workspaces": ["packages/*"],
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "npm run build:package && next dev",
+    "build": "npm run build:package && next build",
+    "build:package": "npm --prefix packages/gate run build",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "npm run build:package && tsc --noEmit"
   },
   "dependencies": {
+    "@akiralazycat/gate": "*",
     "next": "16.3.0",
     "react": "19.2.8",
     "react-dom": "19.2.8"
