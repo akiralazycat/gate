@@ -28,8 +28,15 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Package smoke test
+        run: npm run test:package
+
+      - name: Package dry run
+        run: npm --prefix packages/gate pack --dry-run
+
       - name: Build
         run: npm run build
         env:
-          GATE_PASSWORD: "0427"
+          GATE_PASSWORD: "042731"
           GATE_SECRET: "ci-only-secret-that-is-long-enough-for-build-verification"
+          GATE_PIN_LENGTH: "6"

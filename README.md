@@ -2,31 +2,32 @@
 
 **The access screen Basic Auth should have had.**
 
-Gate is a design-first access layer for private Next.js pages. It replaces the browser-owned Basic Authentication prompt with an application-owned entrance while keeping the protected route on the server side.
+Gate is a design-first shared-secret access layer for private Next.js experiences. Browser Basic Auth dialogs cannot be styled, so Gate moves the credential challenge into the application layer while keeping the protected route and credential verification on the server.
 
-It ships with three deliberately different surfaces:
+## Surfaces
 
-- **Vault** — a numeric keypad and animated safe-door interface for PIN-like credentials.
-- **Cipher** — a compact intelligence-terminal style access-key challenge.
-- **Classic** — a calm username/password card for ordinary organizations, staging sites, and client previews.
+- **Vault** — numeric keypad and safe-door interface.
+- **Cipher** — intelligence-terminal style access-key challenge.
+- **Classic** — calm username/password surface for organizations and client previews.
 
-All three use the same server-side session system. The appearance can change without changing the protected application.
-
-> Gate is not an RFC 7617 HTTP Basic Authentication skin. Browser Basic Auth dialogs cannot be styled. Gate moves the credential challenge into the application layer so the experience can be designed intentionally.
+The appearance is independent from the server-side authentication policy. Switching the visible surface never downgrades `GATE_MODE`.
 
 ## What is implemented
 
 - Next.js 16 App Router reference application
 - `proxy.ts` protection for `/protected/*`
 - HMAC-SHA-256 signed `HttpOnly` session cookie
-- bounded session lifetime (12 hours by default, maximum 7 days)
-- same-origin checks on unlock/logout POST requests
-- fail-closed behavior when secrets are missing
-- constant-length SHA-256 credential comparison
-- Vault / Cipher / Classic presentation modes
-- responsive mobile layouts and reduced-motion support
-- explicit lock/logout flow
-- CI typecheck and production build
+- fail-closed secret handling and same-origin unlock/logout POSTs
+- constant-length SHA-256 static-credential comparison
+- Vault / Cipher / Classic responsive interfaces
+- **Theme Builder** at `/builder`
+- versioned `gate.theme.json`
+- JSON and portable CSS theme export
+- publish-ready **`@akiralazycat/gate`** workspace package
+- expiring, one-time and limited-use guest codes
+- atomic Redis code consumption with a local-memory development adapter
+- Vercel Firewall draft/staged rollout tooling
+- CI typecheck, package smoke test, package dry-run and production build
 
 ## Quick start
 
@@ -36,50 +37,99 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Then open `http://localhost:3000`.
+The example Vault credential is `042731`. Replace every example secret before deploying.
 
-The example `.env` uses `0427` as the Vault code. Replace every example secret before deploying.
+## Theme Builder
 
-## Configuration
+Open `/builder` and tune the palette, geometry, blur, grid and glow while switching between Vault, Cipher and Classic previews.
+
+The Builder exports:
+
+- `gate.theme.json` — the editable/versioned source of truth
+- `gate-theme.css` — portable CSS overrides for an existing Gate surface
+
+The root `gate.theme.json` is loaded by the reference app. `GATE_THEME_JSON` can override it at runtime; `GATE_THEME_PRESET` selects a fallback (`nocturne`, `signal`, `paper`).
+
+## npm package
+
+The reusable core lives in `packages/gate` and builds to `packages/gate/dist`.
+
+```bash
+npm run build:package
+npm run test:package
+npm --prefix packages/gate pack --dry-run
+```
+
+Public API:
+
+```ts
+import {
+  normalizeGateTheme,
+  gateThemeToCss,
+  createGateAccessCode,
+  consumeGateAccessCode,
+  MemoryGateCodeStore,
+  createRedisGateCodeStore,
+} from "@akiralazycat/gate";
+```
+
+The package is structured for npm publication but this repository does not publish automatically. Publishing should happen only after the npm scope/ownership and release version are intentionally configured.
+
+## Expiring / one-time codes
+
+Enable access codes:
 
 ```env
-# Required credential
-GATE_PASSWORD=0427
+GATE_ACCESS_CODES=true
+GATE_ADMIN_TOKEN=<separate-long-random-token>
+UPSTASH_REDIS_REST_URL=<url>
+UPSTASH_REDIS_REST_TOKEN=<token>
+```
 
-# Required signing secret; use a long random value
-GATE_SECRET=replace-with-a-long-random-secret
+Issue a 15-minute, one-use code:
 
-# vault | cipher | classic
+```bash
+curl -X POST https://example.com/api/gate/codes \
+  -H "Authorization: Bearer $GATE_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"ttlSeconds":900,"maxUses":1,"label":"client preview"}'
+```
+
+Production requires Redis; Gate will not pretend an in-memory serverless store is globally one-time. The Redis adapter uses an atomic Lua consume operation. Sessions granted by a guest code cannot outlive that code's remaining expiry.
+
+Vault guest codes require a 6-8 digit `GATE_PIN_LENGTH`. See `docs/ACCESS_CODES.md`.
+
+## Vercel Firewall
+
+Gate includes a safe draft-only setup for API abuse controls:
+
+```bash
+vercel link
+npm run firewall:stage
+```
+
+It stages observation rate limits for `POST /api/gate/unlock` and `POST /api/gate/codes`, both with `rate-limit-action=log`, then prints `vercel firewall diff`. It **never publishes** the rules.
+
+Use `docs/FIREWALL.md` for the log → Preview enforcement → production enforcement rollout. Publishing remains an explicit operator action.
+
+## Core configuration
+
+```env
+GATE_PASSWORD=042731
+GATE_SECRET=<long-random-signing-secret>
 GATE_MODE=vault
-
-# Used only by Classic mode; defaults to guest
 GATE_USERNAME=guest
-
-# Presentation
 GATE_NAME=Private Archive
 GATE_MESSAGE=Authorized access only
 GATE_ALLOW_STYLE_SWITCH=true
-GATE_PIN_LENGTH=4
-
-# Seconds; default 43200, clamped to 60..604800
+GATE_PIN_LENGTH=6
 GATE_SESSION_TTL=43200
+GATE_THEME_PRESET=nocturne
 ```
 
-For a signing secret, for example:
+## Protecting another route tree
 
-```bash
-openssl rand -base64 32
-```
-
-### Mode notes
-
-`vault` uses a numeric keypad, so `GATE_PASSWORD` should be numeric and match `GATE_PIN_LENGTH` (4–8). `cipher` accepts an arbitrary text password. `classic` validates both `GATE_USERNAME` and `GATE_PASSWORD`.
-
-When `GATE_ALLOW_STYLE_SWITCH=true`, visitors can switch presentation modes. The switch is a presentation control only: the server always enforces the configured `GATE_MODE`, so a client cannot downgrade Classic username/password policy by submitting a different mode. For a production gate, setting style switching to `false` usually gives the clearest experience.
-
-## Protecting your application
-
-The reference matcher lives in `proxy.ts`:
+The reference boundary is in `proxy.ts`:
 
 ```ts
 export const config = {
@@ -87,53 +137,37 @@ export const config = {
 };
 ```
 
-Replace the matcher with your private route tree, for example:
-
-```ts
-export const config = {
-  matcher: ["/preview/:path*", "/admin-preview/:path*"],
-};
-```
-
-After successful authentication, Gate redirects to the original protected URL through the local `next` query parameter. External redirect targets are rejected by the client.
+Replace the matcher with the private route tree you want Gate to guard.
 
 ## Security model
 
-Gate is intended for private previews, staging environments, lightweight member areas, internal tools, and similar shared-secret access control.
+Gate is intended for staging environments, client previews, lightweight shared-secret spaces and similar access control. It is not a substitute for per-user identity when you need MFA, password reset, role authorization, audit trails or account lifecycle management.
 
-The credential is validated only on the server. A successful request receives an HMAC-signed session token in an `HttpOnly`, `SameSite=Lax` cookie. `proxy.ts` verifies the signature and expiration before the protected route renders.
+The static credential and guest codes are validated only on the server. Successful requests receive a signed session in an `HttpOnly`, `SameSite=Lax` cookie. `proxy.ts` verifies signature and expiration before the protected route renders.
 
-Gate intentionally does **not** implement a database-backed rate limiter. For internet-facing deployments, add rate limiting at the platform edge (for example Vercel Firewall) and use a high-entropy credential. For per-user identity, audit trails, MFA, password reset, or authorization roles, use a full authentication system instead of a shared Gate credential.
+For internet-facing deployments, use a high-entropy credential, Redis-backed one-time codes, HTTPS and the staged Vercel Firewall policy. Vercel's platform DDoS protection is complementary; the custom Gate rules are aimed at application-level brute-force and admin-endpoint abuse.
 
 ## Project structure
 
 ```text
 app/
-  api/gate/unlock/route.ts   credential exchange
-  api/gate/logout/route.ts   session removal
+  api/gate/unlock/route.ts   static/code credential exchange
+  api/gate/codes/route.ts    admin access-code issuance
+  builder/page.tsx           Theme Builder
   protected/page.tsx         protected reference content
-  page.tsx                   Gate entrance
 components/
   gate-shell.tsx             Vault / Cipher / Classic UI
-  lock-button.tsx            explicit logout action
+  theme-builder.tsx          live theme editor/export
 lib/
-  gate.ts                     configuration + credential validation
-  session.ts                  signed session creation/verification
-proxy.ts                      protected-route boundary
+  access-codes.ts            runtime Redis/memory adapter selection
+  gate.ts                    server auth configuration
+  session.ts                 signed sessions
+  theme.ts                   server theme loading
+packages/gate/               publish-ready reusable package
+scripts/firewall-stage.sh    draft-only Vercel Firewall setup
+gate.theme.json              theme source of truth
+proxy.ts                     protected-route boundary
 ```
-
-## Direction
-
-Gate is deliberately small. Useful next layers are:
-
-- reusable package/API for dropping Gate into another Next.js app
-- visual theme builder and exported configuration
-- optional one-time and expiring guest codes
-- per-code labels and lightweight access events
-- reverse-proxy/reference adapter for protecting legacy sites
-- pluggable rate-limit adapters
-
-The core principle stays the same: **access control can be functional without looking like a system dialog.**
 
 ## License
 
