@@ -1,6 +1,6 @@
 {
   "name": "gate",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "workspaces": ["packages/*"],
   "scripts": {
@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@akiralazycat/gate": "*",
+    "@upstash/redis": "1.38.2",
     "next": "16.3.0",
     "react": "19.2.8",
     "react-dom": "19.2.8"
