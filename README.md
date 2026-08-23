@@ -75,7 +75,7 @@ openssl rand -base64 32
 
 `vault` uses a numeric keypad, so `GATE_PASSWORD` should be numeric and match `GATE_PIN_LENGTH` (4–8). `cipher` accepts an arbitrary text password. `classic` validates both `GATE_USERNAME` and `GATE_PASSWORD`.
 
-When `GATE_ALLOW_STYLE_SWITCH=true`, visitors can switch presentation modes. For a production gate with a numeric-only password, you will usually set it to `false` so only the configured surface is shown.
+When `GATE_ALLOW_STYLE_SWITCH=true`, visitors can switch presentation modes. The switch is a presentation control only: the server always enforces the configured `GATE_MODE`, so a client cannot downgrade Classic username/password policy by submitting a different mode. For a production gate, setting style switching to `false` usually gives the clearest experience.
 
 ## Protecting your application
 
