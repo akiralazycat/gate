@@ -50,8 +50,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "request" }, { status: 400 });
   }
 
+  // `mode` is presentation metadata only. The server-side requirement comes
+  // exclusively from GATE_MODE so a client cannot downgrade Classic auth.
   const result = await validateCredential({
-    mode: body.mode,
     username: typeof body.username === "string" ? body.username : undefined,
     password: body.password,
   });
