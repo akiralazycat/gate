@@ -1,0 +1,22 @@
+{
+  "name": "@akiralazycat/gate",
+  "version": "0.3.0",
+  "description": "Design-first shared-secret access primitives for Next.js and web apps.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./theme": { "types": "./dist/theme.d.ts", "import": "./dist/theme.js" },
+    "./codes": { "types": "./dist/codes.d.ts", "import": "./dist/codes.js" },
+    "./redis": { "types": "./dist/redis-store.d.ts", "import": "./dist/redis-store.js" }
+  },
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "npm run build"
+  },
+  "publishConfig": { "access": "public" },
+  "engines": { "node": ">=20" },
+  "license": "MIT"
+}

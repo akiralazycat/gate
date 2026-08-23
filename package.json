@@ -1,14 +1,21 @@
 {
   "name": "gate",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "private": true,
+  "workspaces": ["packages/*"],
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "npm run build:package && next dev",
+    "build": "npm run build:package && next build",
+    "build:package": "npm --prefix packages/gate run build",
+    "test:package": "npm run build:package && node scripts/smoke-package.mjs",
+    "firewall:stage": "bash scripts/firewall-stage.sh",
+    "firewall:diff": "vercel firewall diff",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "npm run build:package && tsc --noEmit"
   },
   "dependencies": {
+    "@akiralazycat/gate": "*",
+    "@upstash/redis": "1.38.2",
     "next": "16.3.0",
     "react": "19.2.8",
     "react-dom": "19.2.8"
@@ -19,7 +26,5 @@
     "@types/react-dom": "^19.0.0",
     "typescript": "^5.9.0"
   },
-  "engines": {
-    "node": ">=22"
-  }
+  "engines": { "node": ">=22" }
 }

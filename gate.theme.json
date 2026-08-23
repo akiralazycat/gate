@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "name": "Nocturne",
+  "colors": {
+    "background": "#060a09",
+    "surface": "#0b1110",
+    "ink": "#e8ece9",
+    "accent": "#b8ffe2",
+    "danger": "#ff7d79"
+  },
+  "shape": {
+    "panelRadius": 28,
+    "controlRadius": 9
+  },
+  "effects": {
+    "panelOpacity": 0.82,
+    "lineOpacity": 0.14,
+    "mutedOpacity": 0.55,
+    "gridOpacity": 0.26,
+    "glow": 0.28,
+    "blur": 28
+  }
+}
