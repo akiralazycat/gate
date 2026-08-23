@@ -49,7 +49,11 @@ export async function POST(request: NextRequest) {
   const maxUses = body.maxUses === undefined ? 1 : Number(body.maxUses);
   const label = body.label === undefined || body.label === null ? null : String(body.label);
 
-  if (!Number.isFinite(ttlSeconds) || !Number.isFinite(maxUses) || label.length > 80) {
+  if (
+    !Number.isFinite(ttlSeconds) ||
+    !Number.isFinite(maxUses) ||
+    (label !== null && label.length > 80)
+  ) {
     return noStore(NextResponse.json({ ok: false, error: "request" }, { status: 400 }));
   }
 
