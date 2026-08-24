@@ -1,7 +1,6 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
-import { HouseBar } from "@/components/house-bar";
 
 import type { GateMode } from "@/lib/gate";
 
@@ -159,7 +158,6 @@ export default function GateShell({
 
   return (
     <>
-      <HouseBar product="Gate" />
       <main className={`gate-page gate-page--${activeMode}`}>
       <div className="ambient-grid" aria-hidden="true" />
       <div className="ambient-orb ambient-orb--one" aria-hidden="true" />

@@ -53,13 +53,13 @@
 }
 
 .protected-brand strong {
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.2em;
 }
 
 .protected-brand small {
   color: var(--protected-muted);
-  font-size: 8px;
+  font-size: 11px;
   letter-spacing: 0.14em;
 }
 
@@ -74,7 +74,7 @@
   color: var(--protected-ink);
   background: rgba(255, 255, 255, 0.02);
   cursor: pointer;
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.07em;
 }
 
@@ -96,8 +96,8 @@
   gap: 10px;
   margin-bottom: 28px;
   color: #9fffc8;
-  font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
   letter-spacing: 0.15em;
 }
 
@@ -118,7 +118,7 @@
   font-size: clamp(46px, 7vw, 82px);
   font-weight: 430;
   line-height: 0.96;
-  letter-spacing: -0.055em;
+  letter-spacing: 0;
 }
 
 .protected-copy > p:last-child {
@@ -146,8 +146,8 @@
 
 .protected-grid article > span {
   color: #9fffc8;
-  font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
   letter-spacing: 0.13em;
 }
 
@@ -187,3 +187,11 @@
     margin-top: 28px;
   }
 }
+
+/* House v1 readable protected-state labels and touch targets. */
+.protected-header { min-height: var(--header-height); padding-inline: var(--page-gutter); }
+.protected-shell { width: min(var(--content-max), calc(100% - (2 * var(--page-gutter)))); }
+.protected-brand small, .protected-status, .protected-grid article > span { font-size: var(--text-meta); line-height: 1.45; letter-spacing: .08em; }
+.protected-lock { min-height: 40px; font-size: var(--text-label); }
+.protected-copy > p:last-child, .protected-grid p { font-size: var(--text-body-sm); line-height: 1.55; }
+@media (pointer: coarse) { .protected-lock { min-height: 44px; } }

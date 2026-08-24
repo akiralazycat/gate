@@ -17,14 +17,7 @@
   text-rendering: optimizeLegibility;
 }
 
-.house-bar { min-height: 30px; padding: 0 clamp(18px, 4vw, 48px); display: flex; align-items: center; justify-content: space-between; gap: 20px; position: relative; z-index: 100; border-bottom: 1px solid var(--house-line); background: var(--house-surface); color: var(--house-muted); backdrop-filter: blur(18px); font: 650 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; text-transform: uppercase; }
-.house-bar a { display: inline-flex; align-items: center; gap: 8px; color: var(--house-text); text-decoration: none; }
-.house-bar a:hover { color: var(--house-signal); }
-.house-bar a:focus-visible { outline: 2px solid var(--house-focus); outline-offset: 3px; }
-.house-bar__mark { width: 7px; height: 7px; border: 1px solid currentColor; border-radius: 2px; box-shadow: 3px -3px 0 -1px var(--house-surface), 3px -3px 0 0 currentColor; }
-.house-bar__product { color: var(--house-muted); }
 ::selection { background: color-mix(in srgb, var(--house-signal) 26%, transparent); color: var(--house-text); }
-@media (max-width: 560px) { .house-bar { min-height: 28px; } .house-bar__product { display: none; } }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto !important; } *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
 
 * {
@@ -39,7 +32,7 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font-ui);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -192,7 +185,7 @@ a:focus-visible {
 .brand-lockup small,
 .transport-status,
 .gate-footer {
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
 }
@@ -245,8 +238,8 @@ a:focus-visible {
 .panel-kicker,
 .cipher-topline,
 .cipher-meta {
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: 9px;
+  font-family: var(--font-mono);
+  font-size: 11px;
   letter-spacing: 0.17em;
   text-transform: uppercase;
 }
@@ -260,7 +253,7 @@ a:focus-visible {
   font-size: clamp(28px, 4vw, 45px);
   font-weight: 480;
   line-height: 1.05;
-  letter-spacing: -0.04em;
+  letter-spacing: 0;
 }
 
 .gate-intro p {
@@ -292,14 +285,14 @@ a:focus-visible {
   color: var(--muted);
   background: transparent;
   cursor: pointer;
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.04em;
   transition: 180ms ease;
 }
 
 .mode-switcher button span {
-  font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
   opacity: 0.55;
 }
 
@@ -507,7 +500,7 @@ a:focus-visible {
 
 .keypad .keypad-action {
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.1em;
 }
 
@@ -541,8 +534,8 @@ a:focus-visible {
   border-radius: 10px;
   color: #07100d;
   background: var(--accent);
-  font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 9px;
+  font-family: var(--font-mono);
+  font-size: 11px;
   letter-spacing: 0.14em;
 }
 
@@ -650,8 +643,8 @@ a:focus-visible {
   bottom: 17px;
   left: 18px;
   color: var(--muted);
-  font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
   line-height: 1.6;
   letter-spacing: 0.08em;
 }
@@ -675,7 +668,7 @@ a:focus-visible {
   margin: 9px 0 7px;
   font-size: 25px;
   font-weight: 480;
-  letter-spacing: -0.035em;
+  letter-spacing: 0;
 }
 
 .cipher-form-copy p,
@@ -690,8 +683,8 @@ a:focus-visible {
   align-self: center;
   gap: 7px;
   color: var(--muted);
-  font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
   letter-spacing: 0.14em;
 }
 
@@ -717,7 +710,7 @@ a:focus-visible {
   outline: 0;
   color: var(--ink);
   background: transparent;
-  font-family: "SFMono-Regular", Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   letter-spacing: 0.12em;
 }
@@ -732,8 +725,8 @@ a:focus-visible {
   padding: 0 15px;
   color: #0a0804;
   background: var(--accent);
-  font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
   letter-spacing: 0.12em;
 }
 
@@ -743,7 +736,7 @@ a:focus-visible {
   justify-content: space-between;
   margin-bottom: 17px;
   color: var(--muted);
-  font-size: 7px;
+  font-size: 11px;
 }
 
 .classic-panel {
@@ -786,7 +779,7 @@ a:focus-visible {
   gap: 7px;
   margin-top: 14px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
 }
 
@@ -820,7 +813,7 @@ a:focus-visible {
 .classic-note {
   margin: 18px 0 0;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.5;
   text-align: center;
 }
@@ -832,8 +825,8 @@ a:focus-visible {
   min-height: 24px;
   margin-top: 18px;
   color: var(--muted);
-  font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
   letter-spacing: 0.11em;
   text-transform: uppercase;
 }
@@ -879,7 +872,7 @@ a:focus-visible {
 .gate-footer {
   padding-top: 14px;
   padding-bottom: 22px;
-  font-size: 8px;
+  font-size: 11px;
 }
 
 @keyframes rotate {
@@ -1068,3 +1061,28 @@ a:focus-visible {
     display: none;
   }
 }
+
+/* House v1: shared typography and spacing contract. */
+:root {
+  --font-ui: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", "Roboto Mono", "Noto Sans Mono", Menlo, Consolas, monospace;
+  --font-editorial: ui-serif, "New York", Georgia, "Times New Roman", serif;
+  --text-decorative: 10px; --text-meta: 11px; --text-label: 12px; --text-control: 13px;
+  --text-body-sm: 14px; --text-body: 16px; --text-lede: clamp(17px, 1.5vw, 20px);
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 24px;
+  --space-6: 32px; --space-7: 48px; --space-8: 64px; --space-9: 96px; --space-10: 128px;
+  --page-gutter: clamp(20px, 5vw, 72px); --section-space: clamp(64px, 8vw, 112px);
+  --card-padding: clamp(16px, 2vw, 24px); --content-max: 1480px;
+  --header-height: 72px; --toolbar-height: 64px;
+}
+
+body { font-family: var(--font-ui); line-height: 1.55; }
+p { max-width: 68ch; }
+.gate-page { padding-inline: var(--page-gutter); }
+.gate-footer { min-height: 128px; padding-block: var(--space-7); }
+.gate-stage { width: min(var(--content-max), 100%); margin-inline: auto; }
+.brand-lockup span, .gate-footer, .transport-status, .cipher-topline, .mode-hint, .cipher-meta, .cipher-coordinates, .classic-note, .gate-status small { font-family: var(--font-mono); font-size: var(--text-meta); line-height: 1.45; letter-spacing: .08em; }
+.mode-switcher button, .keypad button, .classic-submit, .unlock-button, .cipher-submit, .cipher-input input, .classic-field input { min-height: 40px; font-size: var(--text-control); }
+.cipher-form-copy p, .classic-copy p { font-family: var(--font-ui); font-size: var(--text-body-sm); line-height: 1.55; }
+@media (max-width: 760px) { .gate-page { padding-inline: var(--page-gutter); } .gate-footer { min-height: 96px; padding-block: var(--space-6); } }
+@media (pointer: coarse) { .mode-switcher button, .keypad button, .classic-submit, .unlock-button, .cipher-submit, .cipher-input input, .classic-field input { min-height: 44px; } }
