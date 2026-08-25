@@ -1,6 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 
 import { accessCodesEnabled, issueRuntimeAccessCode } from "@/lib/access-codes";
+import { jsonNoStore, readJsonObject } from "@/lib/http";
+import { checkRateLimit, rateLimitHeaders, resetRateLimit } from "@/lib/rate-limit";
 
 async function digest(value: string) {
   return new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)));
@@ -13,63 +15,69 @@ async function secureEqual(left: string, right: string) {
   return difference === 0;
 }
 
-function noStore(response: NextResponse) {
-  response.headers.set("cache-control", "no-store, max-age=0");
-  return response;
-}
-
 export async function POST(request: NextRequest) {
   if (!accessCodesEnabled()) {
-    return noStore(NextResponse.json({ ok: false, error: "disabled" }, { status: 404 }));
+    return jsonNoStore({ ok: false, error: "disabled" }, { status: 404 });
+  }
+
+  const rateLimit = await checkRateLimit(request, "admin");
+  if (!rateLimit.allowed) {
+    return jsonNoStore(
+      { ok: false, error: "rate_limited", retryAfter: rateLimit.retryAfter },
+      { status: 429, headers: rateLimitHeaders(rateLimit) },
+    );
   }
 
   const expectedToken = process.env.GATE_ADMIN_TOKEN?.trim() ?? "";
   const authorization = request.headers.get("authorization") ?? "";
-  const suppliedToken = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
+  const suppliedToken = authorization.match(/^Bearer\s+([^\s]+)$/i)?.[1] ?? "";
 
-  if (!expectedToken) {
-    return noStore(NextResponse.json({ ok: false, error: "admin_not_configured" }, { status: 503 }));
+  const tokenConfigured = Boolean(expectedToken) && !(
+    process.env.NODE_ENV === "production" &&
+    (expectedToken.length < 32 || expectedToken.includes("replace-with"))
+  );
+
+  if (!tokenConfigured) {
+    return jsonNoStore({ ok: false, error: "admin_not_configured" }, { status: 503 });
   }
 
   if (!suppliedToken || !(await secureEqual(suppliedToken, expectedToken))) {
-    return noStore(NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 }));
+    return jsonNoStore(
+      { ok: false, error: "unauthorized" },
+      { status: 401, headers: { "www-authenticate": "Bearer realm=\"Gate admin\"" } },
+    );
   }
 
-  let body: { ttlSeconds?: unknown; maxUses?: unknown; label?: unknown } = {};
-  const text = await request.text();
-  if (text.trim()) {
-    try {
-      body = JSON.parse(text) as typeof body;
-    } catch {
-      return noStore(NextResponse.json({ ok: false, error: "request" }, { status: 400 }));
-    }
-  }
+  const parsed = await readJsonObject(request);
+  if (!parsed.ok) return jsonNoStore({ ok: false, error: "request" }, { status: 400 });
+  const body = parsed.value;
 
-  const ttlSeconds = body.ttlSeconds === undefined ? 900 : Number(body.ttlSeconds);
-  const maxUses = body.maxUses === undefined ? 1 : Number(body.maxUses);
-  const label = body.label === undefined || body.label === null ? null : String(body.label);
+  const ttlSeconds = body.ttlSeconds === undefined ? 900 : body.ttlSeconds;
+  const maxUses = body.maxUses === undefined ? 1 : body.maxUses;
+  const label = body.label === undefined || body.label === null ? null : body.label;
 
   if (
-    !Number.isFinite(ttlSeconds) ||
-    !Number.isFinite(maxUses) ||
-    (label !== null && label.length > 80)
+    typeof ttlSeconds !== "number" || !Number.isInteger(ttlSeconds) || ttlSeconds < 60 || ttlSeconds > 2_592_000 ||
+    typeof maxUses !== "number" || !Number.isInteger(maxUses) || maxUses < 1 || maxUses > 20 ||
+    (label !== null && (typeof label !== "string" || label.length > 80))
   ) {
-    return noStore(NextResponse.json({ ok: false, error: "request" }, { status: 400 }));
+    return jsonNoStore({ ok: false, error: "request" }, { status: 400 });
   }
 
   try {
     const issued = await issueRuntimeAccessCode({ ttlSeconds, maxUses, label });
-    return noStore(NextResponse.json({
+    await resetRateLimit(request, "admin");
+    return jsonNoStore({
       ok: true,
       code: issued.code,
       id: issued.record.id,
       label: issued.record.label,
       expiresAt: new Date(issued.record.expiresAt).toISOString(),
       maxUses: issued.record.maxUses,
-    }));
+    });
   } catch (error) {
     const reason = error instanceof Error ? error.message : "unknown";
     const status = reason === "vault_pin_too_short" ? 409 : 503;
-    return noStore(NextResponse.json({ ok: false, error: reason }, { status }));
+    return jsonNoStore({ ok: false, error: reason }, { status });
   }
 }

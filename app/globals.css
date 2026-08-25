@@ -52,6 +52,17 @@ a:focus-visible {
   outline-offset: 3px;
 }
 
+.screen-reader-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .gate-page {
   --ink: #e8ece9;
   --muted: rgba(232, 236, 233, 0.55);
@@ -433,11 +444,31 @@ a:focus-visible {
   font-size: 11px;
 }
 
+.pin-entry {
+  position: relative;
+  display: block;
+}
+
+.pin-native-input {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  opacity: 0;
+  cursor: text;
+}
+
 .pin-display {
   display: grid;
   grid-template-columns: repeat(var(--pin-columns, 4), minmax(0, 1fr));
   gap: 8px;
   margin-bottom: 20px;
+}
+
+.pin-entry:focus-within .pin-display span {
+  border-color: color-mix(in srgb, var(--accent), transparent 68%);
 }
 
 .pin-display span {

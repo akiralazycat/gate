@@ -5,12 +5,28 @@ const MIN_SESSION_TTL = 60;
 const MAX_SESSION_TTL = 60 * 60 * 24 * 7;
 
 type SessionPayload = {
-  v: 1;
+  v: 2;
+  iat: number;
   exp: number;
 };
 
 function getSigningSecret() {
-  return process.env.GATE_SECRET?.trim() ?? "";
+  const secret = process.env.GATE_SECRET?.trim() ?? "";
+  if (
+    process.env.NODE_ENV === "production" &&
+    secret &&
+    (secret.length < 32 || secret.includes("replace-with"))
+  ) {
+    return "";
+  }
+  return secret;
+}
+
+function getVerificationSecrets() {
+  const previous = process.env.GATE_SECRET_PREVIOUS?.trim() ?? "";
+  const usablePrevious = process.env.NODE_ENV !== "production" ||
+    (previous.length >= 32 && !previous.includes("replace-with"));
+  return [getSigningSecret(), usablePrevious ? previous : ""].filter(Boolean);
 }
 
 export function getSessionTtl() {
@@ -42,8 +58,10 @@ export async function createSessionToken(ttlSeconds = getSessionTtl()) {
   const secret = getSigningSecret();
   if (!secret) throw new Error("GATE_SECRET is not configured");
 
-  const boundedTtl = Math.min(getSessionTtl(), Math.max(1, Math.floor(ttlSeconds)));
-  const payload: SessionPayload = { v: 1, exp: Math.floor(Date.now() / 1000) + boundedTtl };
+  const requestedTtl = Number.isFinite(ttlSeconds) ? Math.floor(ttlSeconds) : getSessionTtl();
+  const boundedTtl = Math.min(getSessionTtl(), Math.max(1, requestedTtl));
+  const issuedAt = Math.floor(Date.now() / 1000);
+  const payload: SessionPayload = { v: 2, iat: issuedAt, exp: issuedAt + boundedTtl };
   const encodedPayload = bytesToBase64Url(new TextEncoder().encode(JSON.stringify(payload)));
   const key = await getHmacKey(secret);
   const signature = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(encodedPayload)));
@@ -51,18 +69,38 @@ export async function createSessionToken(ttlSeconds = getSessionTtl()) {
 }
 
 export async function verifySessionToken(token?: string | null) {
-  const secret = getSigningSecret();
-  if (!secret || !token) return false;
+  const secrets = getVerificationSecrets();
+  if (secrets.length === 0 || !token || token.length > 4_096) return false;
 
   const [encodedPayload, encodedSignature, extra] = token.split(".");
   if (!encodedPayload || !encodedSignature || extra) return false;
 
   try {
-    const key = await getHmacKey(secret);
-    const validSignature = await crypto.subtle.verify("HMAC", key, base64UrlToBytes(encodedSignature), new TextEncoder().encode(encodedPayload));
+    const signature = base64UrlToBytes(encodedSignature);
+    const message = new TextEncoder().encode(encodedPayload);
+    const checks = await Promise.all(secrets.map(async (secret) => {
+      const key = await getHmacKey(secret);
+      return crypto.subtle.verify("HMAC", key, signature, message);
+    }));
+    const validSignature = checks.some(Boolean);
     if (!validSignature) return false;
-    const payload = JSON.parse(new TextDecoder().decode(base64UrlToBytes(encodedPayload))) as Partial<SessionPayload>;
-    return payload.v === 1 && typeof payload.exp === "number" && Number.isFinite(payload.exp) && payload.exp > Math.floor(Date.now() / 1000);
+    const payload = JSON.parse(
+      new TextDecoder().decode(base64UrlToBytes(encodedPayload)),
+    ) as { v?: number; iat?: number; exp?: number };
+    const now = Math.floor(Date.now() / 1000);
+    if (payload.v === 1) {
+      return typeof payload.exp === "number" &&
+        Number.isFinite(payload.exp) &&
+        payload.exp > now &&
+        payload.exp <= now + MAX_SESSION_TTL;
+    }
+    return payload.v === 2 &&
+      typeof payload.iat === "number" && Number.isFinite(payload.iat) &&
+      typeof payload.exp === "number" && Number.isFinite(payload.exp) &&
+      payload.iat <= now + 60 &&
+      payload.exp > now &&
+      payload.exp > payload.iat &&
+      payload.exp - payload.iat <= MAX_SESSION_TTL;
   } catch {
     return false;
   }

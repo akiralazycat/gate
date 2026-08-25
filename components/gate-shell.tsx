@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
 import type { GateMode } from "@/lib/gate";
 
@@ -13,7 +13,15 @@ type GateShellProps = {
   configured: boolean;
 };
 
-type GateStatus = "idle" | "checking" | "denied" | "granted" | "config";
+type GateStatus =
+  | "idle"
+  | "checking"
+  | "denied"
+  | "rate_limited"
+  | "unavailable"
+  | "error"
+  | "granted"
+  | "config";
 
 const modeCopy: Record<GateMode, { label: string; code: string; hint: string }> = {
   vault: {
@@ -32,6 +40,27 @@ const modeCopy: Record<GateMode, { label: string; code: string; hint: string }> 
     hint: "Identify yourself to continue",
   },
 };
+
+function getStatusCopy(status: GateStatus, retrySeconds: number) {
+  switch (status) {
+    case "checking":
+      return "Verifying credential";
+    case "denied":
+      return "Credential rejected";
+    case "rate_limited":
+      return `Too many attempts · retry in ${retrySeconds}s`;
+    case "unavailable":
+      return "Gate is temporarily unavailable";
+    case "error":
+      return "Connection failed · try again";
+    case "granted":
+      return "Access granted";
+    case "config":
+      return "Gate is not configured";
+    default:
+      return "Gate locked";
+  }
+}
 
 function GateMark() {
   return (
@@ -62,9 +91,17 @@ function DeleteIcon() {
 
 function safeNextPath() {
   const value = new URLSearchParams(window.location.search).get("next");
-  return value && value.startsWith("/") && !value.startsWith("//")
-    ? value
-    : "/protected";
+  if (!value || !value.startsWith("/") || value.startsWith("//") || value.includes("\\")) {
+    return "/protected";
+  }
+  try {
+    const destination = new URL(value, window.location.origin);
+    return destination.origin === window.location.origin
+      ? `${destination.pathname}${destination.search}${destination.hash}`
+      : "/protected";
+  } catch {
+    return "/protected";
+  }
 }
 
 export default function GateShell({
@@ -80,73 +117,98 @@ export default function GateShell({
   const [username, setUsername] = useState("guest");
   const [status, setStatus] = useState<GateStatus>(configured ? "idle" : "config");
   const [attempts, setAttempts] = useState(0);
+  const [retrySeconds, setRetrySeconds] = useState(0);
 
-  const statusCopy = useMemo(() => {
-    switch (status) {
-      case "checking":
-        return "Verifying credential";
-      case "denied":
-        return "Credential rejected";
-      case "granted":
-        return "Access granted";
-      case "config":
-        return "Gate is not configured";
-      default:
-        return "Gate locked";
+  useEffect(() => {
+    if (status !== "rate_limited") return;
+    if (retrySeconds <= 0) {
+      setStatus(configured ? "idle" : "config");
+      return;
     }
-  }, [status]);
+    const timer = window.setTimeout(
+      () => setRetrySeconds((value) => Math.max(0, value - 1)),
+      1_000,
+    );
+    return () => window.clearTimeout(timer);
+  }, [configured, retrySeconds, status]);
+
+  const statusCopy = getStatusCopy(status, retrySeconds);
 
   function changeMode(nextMode: GateMode) {
     if (status === "checking" || status === "granted") return;
     setActiveMode(nextMode);
     setSecret("");
+    setRetrySeconds(0);
     setStatus(configured ? "idle" : "config");
   }
 
   async function submitCredential(event?: FormEvent) {
     event?.preventDefault();
 
-    if (!configured || !secret || status === "checking" || status === "granted") {
+    if (
+      !configured ||
+      !secret ||
+      status === "checking" ||
+      status === "granted" ||
+      status === "rate_limited"
+    ) {
       return;
     }
 
     setStatus("checking");
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 10_000);
 
     try {
       const response = await fetch("/api/gate/unlock", {
         method: "POST",
         headers: { "content-type": "application/json" },
+        cache: "no-store",
+        credentials: "same-origin",
+        signal: controller.signal,
         body: JSON.stringify({
           mode: activeMode,
-          username: activeMode === "classic" ? username : undefined,
+          username,
           password: secret,
         }),
       });
 
       if (!response.ok) {
-        setAttempts((value) => value + 1);
+        if (response.status === 401 || response.status === 429) {
+          setAttempts((value) => value + 1);
+        }
         setSecret("");
-        setStatus(response.status === 503 ? "config" : "denied");
+        if (response.status === 429) {
+          const retryAfter = Number(response.headers.get("retry-after"));
+          setRetrySeconds(Number.isFinite(retryAfter) ? Math.max(1, Math.ceil(retryAfter)) : 60);
+          setStatus("rate_limited");
+        } else if (response.status === 503) {
+          setStatus("unavailable");
+        } else {
+          setStatus("denied");
+        }
         return;
       }
 
       setStatus("granted");
-      window.setTimeout(() => window.location.assign(safeNextPath()), 420);
+      window.setTimeout(() => window.location.replace(safeNextPath()), 420);
     } catch {
-      setStatus("denied");
+      setStatus("error");
+    } finally {
+      window.clearTimeout(timeout);
     }
   }
 
   function addDigit(digit: string) {
     if (secret.length >= pinLength || status === "checking") return;
     setSecret((value) => `${value}${digit}`);
-    if (status === "denied") setStatus("idle");
+    if (status === "denied" || status === "error" || status === "unavailable") setStatus("idle");
   }
 
   function removeDigit() {
     if (status === "checking") return;
     setSecret((value) => value.slice(0, -1));
-    if (status === "denied") setStatus("idle");
+    if (status === "denied" || status === "error" || status === "unavailable") setStatus("idle");
   }
 
   const disabled =
@@ -154,6 +216,7 @@ export default function GateShell({
     !secret ||
     status === "checking" ||
     status === "granted" ||
+    status === "rate_limited" ||
     (activeMode === "vault" && secret.length !== pinLength);
 
   return (
@@ -214,20 +277,37 @@ export default function GateShell({
                 </div>
               </div>
 
-              <div className="vault-interface">
+              <form className="vault-interface" onSubmit={submitCredential} aria-busy={status === "checking"}>
                 <div className="panel-kicker">
                   <span>SECURITY VAULT</span>
                   <span>#{String(attempts + 1).padStart(2, "0")}</span>
                 </div>
                 <p className="mode-hint">{modeCopy.vault.hint}</p>
 
-                <div className="pin-display" aria-label={`${secret.length} of ${pinLength} digits entered`}>
-                  {Array.from({ length: pinLength }).map((_, index) => (
-                    <span key={index} className={index < secret.length ? "is-filled" : ""}>
-                      <i />
-                    </span>
-                  ))}
-                </div>
+                <label className="pin-entry">
+                  <span className="screen-reader-only">Numeric access code</span>
+                  <input
+                    className="pin-native-input"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    pattern="[0-9]*"
+                    value={secret}
+                    maxLength={pinLength}
+                    disabled={status === "checking" || status === "rate_limited"}
+                    onChange={(event) => {
+                      setSecret(event.target.value.replace(/\D/g, "").slice(0, pinLength));
+                      if (status === "denied" || status === "error" || status === "unavailable") setStatus("idle");
+                    }}
+                  />
+                  <span className="pin-display" aria-label={`${secret.length} of ${pinLength} digits entered`}>
+                    {Array.from({ length: pinLength }).map((_, index) => (
+                      <span key={index} className={index < secret.length ? "is-filled" : ""}>
+                        <i />
+                      </span>
+                    ))}
+                  </span>
+                </label>
 
                 <div className="keypad" aria-label="Numeric keypad">
                   {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((digit) => (
@@ -244,16 +324,16 @@ export default function GateShell({
                   </button>
                 </div>
 
-                <button className="unlock-button" type="button" disabled={disabled} onClick={() => submitCredential()}>
+                <button className="unlock-button" type="submit" disabled={disabled}>
                   <span>{status === "checking" ? "VERIFYING" : "UNLOCK GATE"}</span>
                   <ArrowIcon />
                 </button>
-              </div>
+              </form>
             </div>
           ) : null}
 
           {activeMode === "cipher" ? (
-            <form className="cipher-panel" onSubmit={submitCredential}>
+            <form className="cipher-panel" onSubmit={submitCredential} aria-busy={status === "checking"}>
               <div className="cipher-topline">
                 <span>GATE//CIPHER</span>
                 <span>CH.{String(attempts + 1).padStart(2, "0")}</span>
@@ -280,7 +360,7 @@ export default function GateShell({
                     value={secret}
                     onChange={(event) => {
                       setSecret(event.target.value);
-                      if (status === "denied") setStatus("idle");
+                      if (status === "denied" || status === "error" || status === "unavailable") setStatus("idle");
                     }}
                     autoComplete="current-password"
                     autoFocus
@@ -302,7 +382,7 @@ export default function GateShell({
           ) : null}
 
           {activeMode === "classic" ? (
-            <form className="classic-panel" onSubmit={submitCredential}>
+            <form className="classic-panel" onSubmit={submitCredential} aria-busy={status === "checking"}>
               <div className="classic-seal"><GateMark /></div>
               <div className="classic-copy">
                 <span className="eyebrow">RESTRICTED AREA</span>
@@ -328,7 +408,7 @@ export default function GateShell({
                   value={secret}
                   onChange={(event) => {
                     setSecret(event.target.value);
-                    if (status === "denied") setStatus("idle");
+                    if (status === "denied" || status === "error" || status === "unavailable") setStatus("idle");
                   }}
                   autoComplete="current-password"
                   maxLength={256}
@@ -348,7 +428,7 @@ export default function GateShell({
         <div className={`gate-status gate-status--${status}`} role="status" aria-live="polite">
           <span className="status-pulse" />
           <span>{statusCopy}</span>
-          {status === "config" ? <small>Set GATE_PASSWORD and GATE_SECRET.</small> : null}
+          {status === "config" ? <small>Check the server configuration.</small> : null}
         </div>
       </section>
 

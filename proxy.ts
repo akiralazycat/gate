@@ -7,7 +7,9 @@ export async function proxy(request: NextRequest) {
   const authenticated = await verifySessionToken(token);
 
   if (authenticated) {
-    return NextResponse.next();
+    const response = NextResponse.next();
+    response.headers.set("cache-control", "private, no-store, max-age=0");
+    return response;
   }
 
   const unlockUrl = new URL("/", request.url);
@@ -16,7 +18,19 @@ export async function proxy(request: NextRequest) {
     `${request.nextUrl.pathname}${request.nextUrl.search}`,
   );
 
-  return NextResponse.redirect(unlockUrl);
+  const response = NextResponse.redirect(unlockUrl);
+  response.headers.set("cache-control", "no-store, max-age=0");
+  if (token) {
+    response.cookies.set(GATE_SESSION_COOKIE, "", {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 0,
+      priority: "high",
+    });
+  }
+  return response;
 }
 
 export const config = {

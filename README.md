@@ -10,7 +10,7 @@ Gate is a design-first shared-secret access layer for private Next.js experience
 - **Cipher** — intelligence-terminal style access-key challenge.
 - **Classic** — calm username/password surface for organizations and client previews.
 
-The appearance is independent from the server-side authentication policy. Switching the visible surface never downgrades `GATE_MODE`.
+The appearance is independent from the server-side authentication policy. Switching the visible surface never downgrades `GATE_MODE`. Style switching is available for Vault policy, whose numeric credential can be represented by every surface; Cipher and Classic stay on their native input surface so required credential fields cannot disappear.
 
 ## What is implemented
 
@@ -19,6 +19,10 @@ The appearance is independent from the server-side authentication policy. Switch
 - HMAC-SHA-256 signed `HttpOnly` session cookie
 - fail-closed secret handling and same-origin unlock/logout POSTs
 - constant-length SHA-256 static-credential comparison
+- application-level credential/admin throttling with Redis and bounded local fallback
+- versioned sessions with signing-key rotation support
+- strict JSON input bounds, no-store auth responses and production security headers
+- readiness endpoint at `GET /api/gate/health`
 - Vault / Cipher / Classic responsive interfaces
 - **Theme Builder** at `/builder`
 - versioned `gate.theme.json`
@@ -117,6 +121,7 @@ Use `docs/FIREWALL.md` for the log → Preview enforcement → production enforc
 ```env
 GATE_PASSWORD=042731
 GATE_SECRET=<long-random-signing-secret>
+GATE_SECRET_PREVIOUS=<previous-secret-during-rotation-only>
 GATE_MODE=vault
 GATE_USERNAME=guest
 GATE_NAME=Private Archive
@@ -124,6 +129,11 @@ GATE_MESSAGE=Authorized access only
 GATE_ALLOW_STYLE_SWITCH=true
 GATE_PIN_LENGTH=6
 GATE_SESSION_TTL=43200
+GATE_UNLOCK_RATE_LIMIT=10
+GATE_UNLOCK_RATE_WINDOW=60
+GATE_ADMIN_RATE_LIMIT=6
+GATE_ADMIN_RATE_WINDOW=60
+GATE_HEALTH_DETAILS=false
 GATE_THEME_PRESET=nocturne
 ```
 
@@ -145,7 +155,11 @@ Gate is intended for staging environments, client previews, lightweight shared-s
 
 The static credential and guest codes are validated only on the server. Successful requests receive a signed session in an `HttpOnly`, `SameSite=Lax` cookie. `proxy.ts` verifies signature and expiration before the protected route renders.
 
-For internet-facing deployments, use a high-entropy credential, Redis-backed one-time codes, HTTPS and the staged Vercel Firewall policy. Vercel's platform DDoS protection is complementary; the custom Gate rules are aimed at application-level brute-force and admin-endpoint abuse.
+`GET /api/gate/health` returns `200` only when the deployment is ready and `503` otherwise. Use it as a readiness probe. Check names are included during development; set `GATE_HEALTH_DETAILS=true` only when production monitoring needs them. In production, Gate rejects the documented example password, weak/placeholder signing secrets, unusable Vault PINs and incomplete access-code storage.
+
+To rotate the session signing key without immediately invalidating active sessions, move the current value to `GATE_SECRET_PREVIOUS`, deploy a new `GATE_SECRET`, wait at least the configured session lifetime, then remove `GATE_SECRET_PREVIOUS`.
+
+For internet-facing deployments, use a high-entropy credential, Redis-backed one-time codes, HTTPS and the staged Vercel Firewall policy. Gate's built-in limiter is defense in depth; the Vercel Firewall remains the distributed boundary for serverless deployments.
 
 ## Project structure
 
