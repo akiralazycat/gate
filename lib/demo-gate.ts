@@ -45,6 +45,12 @@ function base64UrlToBytes(value: string) {
   return bytes;
 }
 
+function asArrayBuffer(bytes: Uint8Array) {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
+}
+
 function randomBytes(length: number) {
   const bytes = new Uint8Array(length);
   crypto.getRandomValues(bytes);
@@ -66,7 +72,7 @@ async function deriveVerifier(pin: string, salt: Uint8Array) {
         name: "PBKDF2",
         hash: "SHA-256",
         iterations: PBKDF2_ITERATIONS,
-        salt,
+        salt: asArrayBuffer(salt),
       },
       material,
       256,
