@@ -23,7 +23,7 @@ export default async function DemoPage() {
         expiresAt={record?.exp ?? null}
         pinLength={DEMO_PIN_LENGTH}
       />
-      {record ? <DemoModeNav active="vault" /> : null}
+      <DemoModeNav active="vault" />
     </>
   );
 }
