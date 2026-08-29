@@ -1,6 +1,8 @@
 export const DEMO_CREDENTIAL_COOKIE = "gate_demo_credential";
 export const DEMO_SESSION_COOKIE = "gate_demo_session";
+export const DEMO_CHALLENGE_COOKIE = "gate_demo_challenge";
 export const DEMO_TTL_SECONDS = 60 * 30;
+export const DEMO_CHALLENGE_TTL_SECONDS = 30;
 export const DEMO_PIN_LENGTH = 6;
 
 const PBKDF2_ITERATIONS = 120_000;
@@ -20,6 +22,27 @@ type DemoSessionPayload = {
   v: 1;
   demoId: string;
   exp: number;
+};
+
+type DemoChallengePayload = {
+  v: 1;
+  demoId: string;
+  id: string;
+  nonce: string;
+  node: string;
+  coordinates: string;
+  iat: number;
+  exp: number;
+};
+
+export type DemoCipherChallenge = {
+  id: string;
+  nonce: string;
+  node: string;
+  coordinates: string;
+  issuedAt: number;
+  expiresAt: number;
+  windowSeconds: number;
 };
 
 const encoder = new TextEncoder();
@@ -57,6 +80,21 @@ function randomBytes(length: number) {
   return bytes;
 }
 
+function bytesToHex(bytes: Uint8Array) {
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0"))
+    .join("")
+    .toUpperCase();
+}
+
+function groupedHex(bytes: Uint8Array, groupSize = 2) {
+  const value = bytesToHex(bytes);
+  const groups: string[] = [];
+  for (let index = 0; index < value.length; index += groupSize * 2) {
+    groups.push(value.slice(index, index + groupSize * 2));
+  }
+  return groups.join("-");
+}
+
 async function deriveVerifier(pin: string, salt: Uint8Array) {
   const material = await crypto.subtle.importKey(
     "raw",
@@ -92,11 +130,38 @@ function secureEqual(left: Uint8Array, right: Uint8Array) {
 async function getHmacKey(sessionKey: string) {
   return crypto.subtle.importKey(
     "raw",
-    base64UrlToBytes(sessionKey),
+    asArrayBuffer(base64UrlToBytes(sessionKey)),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign", "verify"],
   );
+}
+
+async function signPayload(sessionKey: string, payload: string) {
+  const key = await getHmacKey(sessionKey);
+  const signature = new Uint8Array(
+    await crypto.subtle.sign("HMAC", key, encoder.encode(payload)),
+  );
+  return `${payload}.${bytesToBase64Url(signature)}`;
+}
+
+async function verifySignedPayload(sessionKey: string, token?: string | null) {
+  if (!token) return null;
+  const [payload, signature, extra] = token.split(".");
+  if (!payload || !signature || extra) return null;
+
+  try {
+    const key = await getHmacKey(sessionKey);
+    const valid = await crypto.subtle.verify(
+      "HMAC",
+      key,
+      asArrayBuffer(base64UrlToBytes(signature)),
+      encoder.encode(payload),
+    );
+    return valid ? payload : null;
+  } catch {
+    return null;
+  }
 }
 
 export function isDemoPin(value: unknown): value is string {
@@ -176,32 +241,17 @@ export async function createDemoSessionToken(record: DemoCredential) {
   const encodedPayload = bytesToBase64Url(
     encoder.encode(JSON.stringify(payload)),
   );
-  const key = await getHmacKey(record.sessionKey);
-  const signature = new Uint8Array(
-    await crypto.subtle.sign("HMAC", key, encoder.encode(encodedPayload)),
-  );
-  return `${encodedPayload}.${bytesToBase64Url(signature)}`;
+  return signPayload(record.sessionKey, encodedPayload);
 }
 
 export async function verifyDemoSessionToken(
   record: DemoCredential,
   token?: string | null,
 ) {
-  if (!token) return false;
-
-  const [encodedPayload, encodedSignature, extra] = token.split(".");
-  if (!encodedPayload || !encodedSignature || extra) return false;
+  const encodedPayload = await verifySignedPayload(record.sessionKey, token);
+  if (!encodedPayload) return false;
 
   try {
-    const key = await getHmacKey(record.sessionKey);
-    const valid = await crypto.subtle.verify(
-      "HMAC",
-      key,
-      base64UrlToBytes(encodedSignature),
-      encoder.encode(encodedPayload),
-    );
-    if (!valid) return false;
-
     const payload = JSON.parse(
       decoder.decode(base64UrlToBytes(encodedPayload)),
     ) as Partial<DemoSessionPayload>;
@@ -216,5 +266,64 @@ export async function verifyDemoSessionToken(
     );
   } catch {
     return false;
+  }
+}
+
+export async function createDemoCipherChallenge(record: DemoCredential) {
+  const now = Math.floor(Date.now() / 1000);
+  const exp = Math.min(record.exp, now + DEMO_CHALLENGE_TTL_SECONDS);
+  const payload: DemoChallengePayload = {
+    v: 1,
+    demoId: record.id,
+    id: groupedHex(randomBytes(4), 1),
+    nonce: groupedHex(randomBytes(8), 2),
+    node: "TYO-07",
+    coordinates: "35.6762N / 139.6503E",
+    iat: now,
+    exp,
+  };
+  const encoded = bytesToBase64Url(encoder.encode(JSON.stringify(payload)));
+  const token = await signPayload(record.sessionKey, encoded);
+  const challenge: DemoCipherChallenge = {
+    id: payload.id,
+    nonce: payload.nonce,
+    node: payload.node,
+    coordinates: payload.coordinates,
+    issuedAt: payload.iat,
+    expiresAt: payload.exp,
+    windowSeconds: Math.max(1, payload.exp - payload.iat),
+  };
+  return { token, challenge };
+}
+
+export async function readDemoCipherChallenge(
+  record: DemoCredential,
+  token?: string | null,
+) {
+  const encoded = await verifySignedPayload(record.sessionKey, token);
+  if (!encoded) return null;
+
+  try {
+    const payload = JSON.parse(
+      decoder.decode(base64UrlToBytes(encoded)),
+    ) as Partial<DemoChallengePayload>;
+    const now = Math.floor(Date.now() / 1000);
+    const valid =
+      payload.v === 1 &&
+      payload.demoId === record.id &&
+      typeof payload.id === "string" &&
+      typeof payload.nonce === "string" &&
+      typeof payload.node === "string" &&
+      typeof payload.coordinates === "string" &&
+      typeof payload.iat === "number" &&
+      typeof payload.exp === "number" &&
+      Number.isFinite(payload.exp) &&
+      payload.exp > now &&
+      payload.exp <= record.exp &&
+      payload.exp - payload.iat <= DEMO_CHALLENGE_TTL_SECONDS;
+
+    return valid ? (payload as DemoChallengePayload) : null;
+  } catch {
+    return null;
   }
 }
