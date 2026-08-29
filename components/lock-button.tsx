@@ -18,7 +18,7 @@ export default function LockButton() {
 
   return (
     <button className="protected-lock" type="button" onClick={lock} disabled={busy}>
-      {busy ? "Locking…" : "Lock gate"}
+      {busy ? "SEALING…" : "LOCK FACILITY"}
       <span aria-hidden="true">↗</span>
     </button>
   );
