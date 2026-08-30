@@ -20,6 +20,8 @@ The appearance is independent from the server-side authentication policy. Switch
 - fail-closed secret handling and same-origin unlock/logout POSTs
 - constant-length SHA-256 static-credential comparison
 - Vault / Cipher / Classic responsive interfaces
+- **Interactive Demo**: create a temporary PIN, arm the vault, fail/succeed verification, mechanically open it and enter the protected archive
+- temporary demo credential stored as a signed, secret-keyed verifier rather than plaintext PIN
 - **Theme Builder** at `/builder`
 - versioned `gate.theme.json`
 - JSON and portable CSS theme export
@@ -37,7 +39,36 @@ cp .env.example .env.local
 npm run dev
 ```
 
-The example Vault credential is `042731`. Replace every example secret before deploying.
+The example production Vault credential is `042731`. Replace every example secret before deploying.
+
+To run the self-service showcase instead, explicitly enable Interactive Demo:
+
+```env
+GATE_INTERACTIVE_DEMO=true
+GATE_SECRET=<long-random-signing-secret>
+GATE_PIN_LENGTH=6
+GATE_DEMO_TTL=1800
+```
+
+**Interactive Demo intentionally lets every visitor create a temporary credential that can enter `/protected`. Never enable it on a deployment containing real private data.** See `docs/INTERACTIVE_DEMO.md`.
+
+## Interactive Demo
+
+The reference app can demonstrate the complete Gate story rather than only showing a keypad mock:
+
+1. create a temporary PIN
+2. confirm it
+3. watch the Gate arm
+4. return to a genuinely locked Vault
+5. try a wrong PIN and remain outside
+6. enter the correct PIN
+7. watch the bolts retract and the aperture open
+8. arrive at the server-protected fictional intelligence archive
+9. lock the facility and return to the closed Gate
+
+The PIN itself is never stored in the browser cookie. Gate stores a random salt plus an HMAC-SHA-256 verifier keyed by `GATE_SECRET`, expiration metadata, and a signature covering that payload. The temporary cookie is `HttpOnly` and `SameSite=Lax`.
+
+The showcase is isolated behind `GATE_INTERACTIVE_DEMO=true`; when disabled, the existing production `GateShell` and its Vault/Cipher/Classic surfaces remain unchanged.
 
 ## Theme Builder
 
@@ -125,6 +156,8 @@ GATE_ALLOW_STYLE_SWITCH=true
 GATE_PIN_LENGTH=6
 GATE_SESSION_TTL=43200
 GATE_THEME_PRESET=nocturne
+GATE_INTERACTIVE_DEMO=false
+GATE_DEMO_TTL=1800
 ```
 
 ## Protecting another route tree
@@ -143,30 +176,37 @@ Replace the matcher with the private route tree you want Gate to guard.
 
 Gate is intended for staging environments, client previews, lightweight shared-secret spaces and similar access control. It is not a substitute for per-user identity when you need MFA, password reset, role authorization, audit trails or account lifecycle management.
 
-The static credential and guest codes are validated only on the server. Successful requests receive a signed session in an `HttpOnly`, `SameSite=Lax` cookie. `proxy.ts` verifies signature and expiration before the protected route renders.
+The static credential, temporary Interactive Demo verifier and guest codes are validated only on the server. Successful requests receive a signed session in an `HttpOnly`, `SameSite=Lax` cookie. `proxy.ts` verifies signature and expiration before the protected route renders.
 
-For internet-facing deployments, use a high-entropy credential, Redis-backed one-time codes, HTTPS and the staged Vercel Firewall policy. Vercel's platform DDoS protection is complementary; the custom Gate rules are aimed at application-level brute-force and admin-endpoint abuse.
+Interactive Demo is a showcase exception to normal access policy: when enabled, each visitor can mint their own short-lived credential for the reference protected route. Keep it disabled anywhere `/protected` contains actual private content.
+
+For internet-facing production deployments, use a high-entropy credential, Redis-backed one-time codes, HTTPS and the staged Vercel Firewall policy. Vercel's platform DDoS protection is complementary; the custom Gate rules are aimed at application-level brute-force and admin-endpoint abuse.
 
 ## Project structure
 
 ```text
 app/
-  api/gate/unlock/route.ts   static/code credential exchange
-  api/gate/codes/route.ts    admin access-code issuance
-  builder/page.tsx           Theme Builder
-  protected/page.tsx         protected reference content
+  api/gate/unlock/route.ts       static/demo/code credential exchange
+  api/gate/demo/setup/route.ts   temporary demo credential creation
+  api/gate/demo/reset/route.ts   demo credential/session destruction
+  api/gate/codes/route.ts        admin access-code issuance
+  builder/page.tsx               Theme Builder
+  protected/page.tsx             protected fictional archive
 components/
-  gate-shell.tsx             Vault / Cipher / Classic UI
-  theme-builder.tsx          live theme editor/export
+  gate-shell.tsx                 production Vault / Cipher / Classic UI
+  demo-gate-shell.tsx            interactive Vault showcase
+  theme-builder.tsx              live theme editor/export
 lib/
-  access-codes.ts            runtime Redis/memory adapter selection
-  gate.ts                    server auth configuration
-  session.ts                 signed sessions
-  theme.ts                   server theme loading
-packages/gate/               publish-ready reusable package
-scripts/firewall-stage.sh    draft-only Vercel Firewall setup
-gate.theme.json              theme source of truth
-proxy.ts                     protected-route boundary
+  access-codes.ts                runtime Redis/memory adapter selection
+  demo.ts                        signed temporary demo credential
+  gate.ts                        server auth configuration
+  session.ts                     signed sessions
+  theme.ts                       server theme loading
+packages/gate/                   publish-ready reusable package
+docs/INTERACTIVE_DEMO.md         showcase security boundary and flow
+scripts/firewall-stage.sh        draft-only Vercel Firewall setup
+gate.theme.json                  theme source of truth
+proxy.ts                         protected-route boundary
 ```
 
 ## License

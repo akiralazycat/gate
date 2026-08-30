@@ -1,25 +1,45 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { consumeRuntimeAccessCode } from "@/lib/access-codes";
+import { GATE_DEMO_COOKIE, validateDemoCredential } from "@/lib/demo";
 import { isGateMode, validateCredential } from "@/lib/gate";
-import { createSessionToken, GATE_SESSION_COOKIE, getSessionTtl } from "@/lib/session";
+import {
+  createSessionToken,
+  GATE_SESSION_COOKIE,
+  getSessionTtl,
+} from "@/lib/session";
 
 type UnlockBody = { mode?: unknown; username?: unknown; password?: unknown };
 
 function sameOrigin(request: NextRequest) {
   const origin = request.headers.get("origin");
   if (!origin) return true;
-  try { return new URL(origin).host === request.nextUrl.host; } catch { return false; }
+  try {
+    return new URL(origin).host === request.nextUrl.host;
+  } catch {
+    return false;
+  }
 }
 
 export async function POST(request: NextRequest) {
-  if (!sameOrigin(request)) return NextResponse.json({ ok: false, error: "origin" }, { status: 403 });
+  if (!sameOrigin(request)) {
+    return NextResponse.json({ ok: false, error: "origin" }, { status: 403 });
+  }
 
   let body: UnlockBody;
-  try { body = (await request.json()) as UnlockBody; }
-  catch { return NextResponse.json({ ok: false, error: "request" }, { status: 400 }); }
+  try {
+    body = (await request.json()) as UnlockBody;
+  } catch {
+    return NextResponse.json({ ok: false, error: "request" }, { status: 400 });
+  }
 
-  if (!isGateMode(body.mode) || typeof body.password !== "string" || body.password.length > 256 || (body.username !== undefined && (typeof body.username !== "string" || body.username.length > 128))) {
+  if (
+    !isGateMode(body.mode) ||
+    typeof body.password !== "string" ||
+    body.password.length > 256 ||
+    (body.username !== undefined &&
+      (typeof body.username !== "string" || body.username.length > 128))
+  ) {
     return NextResponse.json({ ok: false, error: "request" }, { status: 400 });
   }
 
@@ -30,27 +50,56 @@ export async function POST(request: NextRequest) {
     password: body.password,
   });
 
-  if (!staticResult.ok && staticResult.reason === "not_configured") {
-    return NextResponse.json({ ok: false, error: "not_configured" }, { status: 503 });
-  }
-
   let sessionTtl = getSessionTtl();
   let granted = staticResult.ok;
-  let via: "static" | "code" = "static";
+  let via: "static" | "demo" | "code" = "static";
 
-  if (!granted) {
-    const codeResult = await consumeRuntimeAccessCode(body.password);
-    if (codeResult.ok) {
-      granted = true;
-      via = "code";
-      const remaining = Math.max(1, Math.floor((codeResult.record.expiresAt - Date.now()) / 1000));
-      sessionTtl = Math.min(sessionTtl, remaining);
-    }
+  const demoResult = granted
+    ? null
+    : await validateDemoCredential(
+        request.cookies.get(GATE_DEMO_COOKIE)?.value,
+        body.password,
+      );
+
+  if (demoResult?.ok) {
+    granted = true;
+    via = "demo";
+    sessionTtl = Math.min(sessionTtl, demoResult.remainingSeconds);
+  }
+
+  const codeResult = granted
+    ? null
+    : await consumeRuntimeAccessCode(body.password);
+
+  if (codeResult?.ok) {
+    granted = true;
+    via = "code";
+    const remaining = Math.max(
+      1,
+      Math.floor((codeResult.record.expiresAt - Date.now()) / 1000),
+    );
+    sessionTtl = Math.min(sessionTtl, remaining);
   }
 
   if (!granted) {
     await new Promise((resolve) => setTimeout(resolve, 280));
-    return NextResponse.json({ ok: false, error: "denied" }, { status: 401 });
+
+    const staticUnavailable =
+      !staticResult.ok && staticResult.reason === "not_configured";
+    const demoUnavailable =
+      !demoResult || (!demoResult.ok && demoResult.reason === "unavailable");
+    const codeUnavailable =
+      !codeResult || (!codeResult.ok && codeResult.reason === "unavailable");
+    const noCredentialSource =
+      staticUnavailable && demoUnavailable && codeUnavailable;
+
+    return NextResponse.json(
+      {
+        ok: false,
+        error: noCredentialSource ? "not_configured" : "denied",
+      },
+      { status: noCredentialSource ? 503 : 401 },
+    );
   }
 
   const token = await createSessionToken(sessionTtl);
