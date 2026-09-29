@@ -3,8 +3,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { consumeRuntimeAccessCode } from "@/lib/access-codes";
 import { isGateMode, validateCredential } from "@/lib/gate";
 import { createSessionToken, GATE_SESSION_COOKIE, getSessionTtl } from "@/lib/session";
+import { consumeRequestBurst } from "@/lib/request-burst-limit";
 
 type UnlockBody = { mode?: unknown; username?: unknown; password?: unknown };
+
+const MAX_REQUEST_BYTES = 8_192;
+const UNLOCK_BURST_LIMIT = 20;
+const UNLOCK_BURST_WINDOW_MS = 60_000;
 
 function sameOrigin(request: NextRequest) {
   const origin = request.headers.get("origin");
@@ -15,8 +20,26 @@ function sameOrigin(request: NextRequest) {
 export async function POST(request: NextRequest) {
   if (!sameOrigin(request)) return NextResponse.json({ ok: false, error: "origin" }, { status: 403 });
 
+  const burst = consumeRequestBurst(request, "gate-unlock", UNLOCK_BURST_LIMIT, UNLOCK_BURST_WINDOW_MS);
+  if (!burst.allowed) {
+    return NextResponse.json(
+      { ok: false, error: "rate_limited" },
+      { status: 429, headers: { "Retry-After": String(burst.retryAfterSeconds) } },
+    );
+  }
+
+  const declaredLength = Number(request.headers.get("content-length") ?? 0);
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_BYTES) {
+    return NextResponse.json({ ok: false, error: "request" }, { status: 413 });
+  }
+
+  const text = await request.text();
+  if (new TextEncoder().encode(text).byteLength > MAX_REQUEST_BYTES) {
+    return NextResponse.json({ ok: false, error: "request" }, { status: 413 });
+  }
+
   let body: UnlockBody;
-  try { body = (await request.json()) as UnlockBody; }
+  try { body = JSON.parse(text) as UnlockBody; }
   catch { return NextResponse.json({ ok: false, error: "request" }, { status: 400 }); }
 
   if (!isGateMode(body.mode) || typeof body.password !== "string" || body.password.length > 256 || (body.username !== undefined && (typeof body.username !== "string" || body.username.length > 128))) {
