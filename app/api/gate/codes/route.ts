@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { accessCodesEnabled, issueRuntimeAccessCode } from "@/lib/access-codes";
+import { consumeRequestBurst } from "@/lib/request-burst-limit";
+
+const MAX_REQUEST_BYTES = 8_192;
+const ADMIN_BURST_LIMIT = 8;
+const ADMIN_BURST_WINDOW_MS = 60_000;
 
 async function digest(value: string) {
   return new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)));
@@ -23,6 +28,14 @@ export async function POST(request: NextRequest) {
     return noStore(NextResponse.json({ ok: false, error: "disabled" }, { status: 404 }));
   }
 
+  const burst = consumeRequestBurst(request, "gate-admin-code", ADMIN_BURST_LIMIT, ADMIN_BURST_WINDOW_MS);
+  if (!burst.allowed) {
+    return noStore(NextResponse.json(
+      { ok: false, error: "rate_limited" },
+      { status: 429, headers: { "Retry-After": String(burst.retryAfterSeconds) } },
+    ));
+  }
+
   const expectedToken = process.env.GATE_ADMIN_TOKEN?.trim() ?? "";
   const authorization = request.headers.get("authorization") ?? "";
   const suppliedToken = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
@@ -36,7 +49,15 @@ export async function POST(request: NextRequest) {
   }
 
   let body: { ttlSeconds?: unknown; maxUses?: unknown; label?: unknown } = {};
+  const declaredLength = Number(request.headers.get("content-length") ?? 0);
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_BYTES) {
+    return noStore(NextResponse.json({ ok: false, error: "request" }, { status: 413 }));
+  }
+
   const text = await request.text();
+  if (new TextEncoder().encode(text).byteLength > MAX_REQUEST_BYTES) {
+    return noStore(NextResponse.json({ ok: false, error: "request" }, { status: 413 }));
+  }
   if (text.trim()) {
     try {
       body = JSON.parse(text) as typeof body;
