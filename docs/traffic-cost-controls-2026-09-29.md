@@ -1,5 +1,7 @@
 # Traffic cost controls — 2026-09-29
 
+Status: complete
+
 ## Scope
 
 Reduce repeated credential-check cost on Gate API routes before credential verification, Redis code lookup and the intentional failed-login delay.
@@ -19,4 +21,4 @@ The repository's Vercel Firewall rules remain the preferred first layer because 
 | Unlock pre-auth guard | done | 20 requests / minute / client key + 8 KiB body ceiling |
 | Admin-code guard | done | 8 requests / minute / client key + 8 KiB body ceiling |
 | Static verification | done | guards run before credential/Redis work; same-origin behavior preserved |
-| Production verification | pending |
+| Production verification | done | Vercel READY; `gate.manabeakira.com` 200 |
