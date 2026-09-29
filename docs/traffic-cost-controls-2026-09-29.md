@@ -16,7 +16,7 @@ The repository's Vercel Firewall rules remain the preferred first layer because 
 
 | Item | Status |
 |---|---|
-| Unlock pre-auth guard | pending |
-| Admin-code guard | pending |
-| Static verification | pending |
+| Unlock pre-auth guard | done | 20 requests / minute / client key + 8 KiB body ceiling |
+| Admin-code guard | done | 8 requests / minute / client key + 8 KiB body ceiling |
+| Static verification | done | guards run before credential/Redis work; same-origin behavior preserved |
 | Production verification | pending |
