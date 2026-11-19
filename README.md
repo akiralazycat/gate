@@ -32,12 +32,14 @@ The appearance is independent from the server-side authentication policy. Switch
 ## Quick start
 
 ```bash
-npm install
+npm install --no-package-lock
 cp .env.example .env.local
 npm run dev
 ```
 
-The example Vault credential is `042731`. Replace every example secret before deploying.
+Use Node.js 22 or newer. The example Vault credential is `042731`. Replace every example secret before deploying.
+
+For code changes, run `npm run test:package`, `npm run build`, then `npm run typecheck` from the repository root. The package smoke check and local build use local settings. The hosted firewall procedures are documented in [docs/FIREWALL.md](docs/FIREWALL.md).
 
 ## Theme Builder
 
